@@ -61,7 +61,8 @@ FixedHeader = function ( mTable, oInit ) {
 			"top": 104,
 			"bottom": 103,
 			"left": 102,
-			"right": 101
+			"right": 101,
+			"corner": 105
 		},
 		"oCloneOnDraw": {
 			"top": false,
@@ -208,6 +209,10 @@ FixedHeader.prototype = {
 		{
 			s.aoCache.push( that._fnCloneTable( "fixedRight", "FixedHeader_Right", that._fnCloneTRight, s.oSides.right ) );
 		}
+		if ( s.oSides.top && s.oSides.left )
+		{
+			s.aoCache.push( that._fnCloneTable( "fixedLeftHeader", "FixedHeader_LeftHeader", that._fnCloneTLefthead, s.oSides.left ) );
+		}
 		
 		/* Event listeners for window movement */
 		FixedHeader.afnScroll.push( function () {
@@ -334,17 +339,21 @@ FixedHeader.prototype = {
 		{
 			nDiv.style.zIndex = s.oZIndexes.top;
 		}
-		if ( sType == "fixedFooter" )
+		else if ( sType == "fixedFooter" )
 		{
 			nDiv.style.zIndex = s.oZIndexes.bottom;
 		}
-		if ( sType == "fixedLeft" )
+		else if ( sType == "fixedLeft" )
 		{
 			nDiv.style.zIndex = s.oZIndexes.left;
 		}
 		else if ( sType == "fixedRight" )
 		{
 			nDiv.style.zIndex = s.oZIndexes.right;
+		}
+		else
+		{
+			nDiv.style.zIndex = s.oZIndexes.corner;
 		}
 
 		/* remove margins since we are going to position it absolutely */
@@ -437,9 +446,13 @@ FixedHeader.prototype = {
 			{
 				this._fnScrollHorizontalLeft( s.aoCache[i] );
 			}
-			else
+			else if ( s.aoCache[i].sType == "fixedRight" )
 			{
 				this._fnScrollHorizontalRight( s.aoCache[i] );
+			}
+			else if ( s.aoCache[i].sType == "fixedLeftHeader" )
+			{
+				this._fnScrollFixedLeftHeader( s.aoCache[i] );
 			}
 		}
 	},
@@ -465,7 +478,7 @@ FixedHeader.prototype = {
 	 */
 	
 	/*
-	 * Function: _fnScrollHorizontalLeft
+	 * Function: _fnScrollHorizontalRight
 	 * Purpose:  Update the positioning of the scrolling elements
 	 * Returns:  -
 	 * Inputs:   object:oCache - the cached values for this fixed element
@@ -662,6 +675,66 @@ FixedHeader.prototype = {
 		}
 	},
 	
+	/*
+	 * Function: _fnScrollFixedHeader
+	 * Purpose:  Update the positioning of the scrolling elements
+	 * Returns:  -
+	 * Inputs:   object:oCache - the cached values for this fixed element
+	 */
+	_fnScrollFixedLeftHeader: function ( oCache )
+	{
+		var
+			s = this.fnGetSettings(),
+			oMes = s.oMes,
+			oWin = FixedHeader.oWin,
+			oDoc = FixedHeader.oDoc,
+			nTable = oCache.nWrapper,
+			iCellWidth = $(nTable).outerWidth(),
+			iTbodyHeight = 0,
+			anTbodies = s.nTable.getElementsByTagName('tbody'),
+			iMiddle = 0,
+			iTop,
+			iLeft;
+
+		for (var i = 0; i < anTbodies.length; ++i) {
+			iTbodyHeight += anTbodies[i].offsetHeight;
+		}
+
+		if ( oMes.iTableTop > oWin.iScrollTop + s.oOffset.top ) {
+			/* Above the table */
+			iTop = oMes.iTableTop;
+		} else if ( oWin.iScrollTop + s.oOffset.top > oMes.iTableTop+iTbodyHeight ) {
+			/* At the bottom of the table */
+			iTop = oMes.iTableTop+iTbodyHeight;
+		} else {
+			/* In the middle of the table */
+			iTop = oWin.iScrollTop;
+			iMiddle++;
+		}
+
+		if ( oWin.iScrollLeft < oMes.iTableLeft ) {
+			/* Fully left align */
+			iLeft = oMes.iTableLeft;
+		} else if ( oWin.iScrollLeft < oMes.iTableLeft+oMes.iTableWidth-iCellWidth ) {
+			/* Middle */
+			iLeft = oWin.iScrollLeft;
+			iMiddle++;
+		} else {
+			/* Fully right align */
+			iLeft = oMes.iTableLeft+oMes.iTableWidth-iCellWidth;
+		}
+
+		if (iMiddle == 2 && !s.bUseAbsPos) {
+			this._fnUpdateCache( oCache, 'sPosition', "fixed", 'position', nTable.style );
+			this._fnUpdateCache( oCache, 'sTop', s.oOffset.top+"px", 'top', nTable.style );
+			this._fnUpdateCache( oCache, 'sLeft', "0px", 'left', nTable.style );
+		} else {
+			this._fnUpdateCache( oCache, 'sPosition', "absolute", 'position', nTable.style );
+			this._fnUpdateCache( oCache, 'sTop', iTop + "px", 'top', nTable.style );
+			this._fnUpdateCache( oCache, 'sLeft', iLeft + "px", 'left', nTable.style );
+		}
+	},
+
 	/*
 	 * Function: _fnUpdateCache
 	 * Purpose:  Check the cache and update cache and value if needed
@@ -906,6 +979,62 @@ FixedHeader.prototype = {
 		oCache.nWrapper.style.width = iWidth+"px";
 	},
 	
+	/*
+	 * Function: _fnCloneTLefthead
+	 * Purpose:  Clone the left thead element(s)
+	 * Returns:  -
+	 * Inputs:   object:oCache - the cached values for this fixed element
+	 */
+	_fnCloneTLefthead: function ( oCache )
+	{
+		var s = this.fnGetSettings();
+		var nTable = oCache.nNode;
+
+		/* Remove any children the cloned table has */
+		while ( nTable.childNodes.length > 0 )
+		{
+			$('thead th', nTable).unbind( 'click' );
+			nTable.removeChild( nTable.childNodes[0] );
+		}
+
+		/* Clone the DataTables header */
+		var nThead = $('thead', s.nTable).clone(true)[0];
+		nTable.appendChild( nThead );
+
+		/* Remove unneeded cells */
+		$('thead tr', nTable).each( function (k) {
+			$('th:gt(' + (oCache.iCells - 1) + ')', this).remove();
+
+		} );
+		/* Copy the widths across - apparently a clone isn't good enough for this */
+		var a = [];
+		var b = [];
+
+		jQuery("thead>tr th", s.nTable).each( function (i) {
+			a.push( jQuery(this).width() );
+		} );
+
+		jQuery("thead>tr td", s.nTable).each( function (i) {
+			b.push( jQuery(this).width() );
+		} );
+
+		jQuery("thead>tr th", s.nTable).each( function (i) {
+			jQuery("thead>tr th:eq("+i+")", nTable).width( a[i] );
+			$(this).width( a[i] );
+		} );
+
+		jQuery("thead>tr td", s.nTable).each( function (i) {
+			jQuery("thead>tr td:eq("+i+")", nTable).width( b[i] );
+			$(this).width( b[i] );
+		} );
+
+		// Stop DataTables 1.9 from putting a focus ring on the headers when
+		// clicked to sort
+		$('th.sorting, th.sorting_desc, th.sorting_asc', nTable).bind( 'click', function () {
+			this.blur();
+		} );
+	},
+
 	
 	/**
 	 * Equalise the heights of the rows in a given table node in a cross browser way. Note that this
